@@ -21,6 +21,9 @@ ENCODING = 'utf-8'
 # determines the maximum size of each chunk. 1024 bytes (1 KB)
 BUFFER_SIZE = 1024
 
+# String to notify that a file transfer is happening
+FILE_TRANSFER = 'FILE_TRANSFER'
+
 """
 threading.Lock() creates a lock object
     Locks: are used to synchronize access to shared resources
@@ -34,6 +37,46 @@ print_lock = threading.Lock()
 message_queue = queue.Queue()
 
 
+# Responsible for sending files
+def send_file(client_socket, filepath):
+    if not os.path.exists(filepath):
+        print('\rFile Not Found\n')
+        print("\rEnter message: ", end="")  # Reprint the prompt
+        return
+
+    filename = os.path.basename(filepath)
+    filesize = os.path.getsize(filepath)
+
+    # Inform recipient of file transfer
+    client_socket.sendall(
+        f"{FILE_TRANSFER}:{filename}:{filesize}".encode(ENCODING))
+
+    with open(filepath, 'rb') as f:
+        while True:
+            chunk = f.read(BUFFER_SIZE)
+
+            if not chunk:
+                break
+            client_socket.sendall(chunk)
+
+    client_socket.sendall("File Transfer Complete".encode(ENCODING))
+
+
+# Responsible for recieving files being transfered
+def recieve_file(client_socket, filename, filesize):
+    with open(filename, 'wb') as f:
+        recieved_size = 0
+
+        while recieved_size < filesize:
+            chunk = client_socket.recv(BUFFER_SIZE)
+
+            if not chunk:  # handle disconnects
+                break
+
+            f.write(chunk)
+            recieved_size += len(chunk)
+
+
 # Responsible for continuously receiving messages from the server
 def receive_messages(client_socket):
     while True:
@@ -41,7 +84,15 @@ def receive_messages(client_socket):
             # Receives data from the server
             message = client_socket.recv(BUFFER_SIZE).decode(ENCODING)
 
+            filename = ''
+            filesize = 0
+
             if message:
+                if message.startswith(f"{FILE_TRANSFER}:"):
+                    _, filename, filesize_str = message.split(':')
+                    filesize = int(filesize_str)
+                    recieve_file(client_socket, filename, filesize)
+
                 # Acquires the print_lock and ensures that only one thread
                 # can print to the console at a time
                 with print_lock:
@@ -71,8 +122,11 @@ def receive_messages(client_socket):
                     """
                     print(" " * os.get_terminal_size().columns, end="\r")
 
-                    # Print the received message
-                    print(f"Received: {message}\n")
+                    if filesize > 0:
+                        print(f"File '{filename}' received successfully\n")
+                    else:
+                        # Print the received message
+                        print(f"Received: {message}\n")
 
                     # Reprint the prompt
                     print("\rEnter message: ", end="")
@@ -94,8 +148,12 @@ def send_messages(client_socket, message_queue):
         # it will block (wait) until a message becomes available
         message = message_queue.get()
 
-        # Sends message to the server
-        client_socket.sendall(message.encode(ENCODING))
+        if message.startswith('sendfile'):
+            filepath = message.split(' ')[1]
+            send_file(client_socket, filepath)
+        else:
+            # Sends message to the server
+            client_socket.sendall(message.encode(ENCODING))
 
 
 """ 
