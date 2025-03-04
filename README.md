@@ -20,7 +20,7 @@ A simple chat and file transfer application built using Python's socket programm
 - Threading for concurrency
 
 📂 **Project Directory:** `tcp-chat-app/`  
-📖 **More Details:** [README](tcp-chat-app/README.md)
+📖 **More Details:** [README](./tpc-chat-app/README.md)
 
 ### 3. WebSockets
 Develop a WebSocket server and client to explore real-time, bidirectional communication.
